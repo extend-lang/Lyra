@@ -142,10 +142,10 @@ class cli : protected arguments
 	protected:
 	mutable exe_name m_exeName;
 
-	virtual std::string get_usage_text() const override
+	virtual std::string get_usage_text(std::vector<const parser*> & context) const override
 	{
 		if (!m_exeName.name().empty())
-			return m_exeName.name() + " " + arguments::get_usage_text();
+			return m_exeName.name() + " " + arguments::get_usage_text(context);
 		else
 			// We use an empty exe name as an indicator to remove USAGE text.
 			return "";

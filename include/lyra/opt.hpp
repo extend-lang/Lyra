@@ -83,7 +83,10 @@ class opt : public bound_parser<opt>
 
 	// Internal..
 
-	virtual std::string get_usage_text() const override
+	using bound_parser::get_usage_text;
+	using bound_parser::get_help_text;
+
+	virtual std::string get_usage_text(std::vector<const parser*> & context) const override
 	{
 		std::string result;
 		for (std::size_t o = 0; o < opt_names.size(); ++o)
@@ -95,7 +98,7 @@ class opt : public bound_parser<opt>
 		return result;
 	}
 
-	virtual help_text get_help_text() const override
+	virtual help_text get_help_text(std::vector<const parser*> & context) const override
 	{
 		std::ostringstream oss;
 		bool first = true;

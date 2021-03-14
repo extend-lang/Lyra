@@ -26,8 +26,10 @@ class arg : public bound_parser<arg>
 {
 	public:
 	using bound_parser::bound_parser;
+	using bound_parser::get_usage_text;
+	using bound_parser::get_help_text;
 
-	virtual std::string get_usage_text() const override
+	virtual std::string get_usage_text(std::vector<const parser*> & context) const override
 	{
 		std::ostringstream oss;
 		if (!m_hint.empty())
@@ -53,9 +55,9 @@ class arg : public bound_parser<arg>
 		return oss.str();
 	}
 
-	virtual help_text get_help_text() const override
+	virtual help_text get_help_text(std::vector<const parser*> & context) const override
 	{
-		return { { get_usage_text(), m_description } };
+		return { { get_usage_text(context), m_description } };
 	}
 
 	using parser::parse;

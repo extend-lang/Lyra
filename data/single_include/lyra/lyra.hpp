@@ -1181,6 +1181,7 @@ inline detail::BoundVal<std::string> val(const char * v)
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 namespace lyra {
 
@@ -1314,9 +1315,25 @@ class parser
 
 	using help_text = std::vector<help_text_item>;
 
-	virtual help_text get_help_text() const { return {}; }
-	virtual std::string get_usage_text() const { return ""; }
-	virtual std::string get_description_text() const { return ""; }
+	help_text get_help_text() const
+	{
+		std::vector<const parser*> context;
+		return get_help_text(context);
+	}
+	std::string get_usage_text() const
+	{
+		std::vector<const parser*> context;
+		return get_usage_text(context);
+	}
+	std::string get_description_text() const
+	{
+		std::vector<const parser*> context;
+		return get_description_text(context);
+	}
+
+	virtual help_text get_help_text(std::vector<const parser*> & context) const { return {}; }
+	virtual std::string get_usage_text(std::vector<const parser*> & context) const { return ""; }
+	virtual std::string get_description_text(std::vector<const parser*> & context) const { return ""; }
 
 	virtual ~parser() = default;
 
@@ -1349,19 +1366,21 @@ class parser
 	protected:
 	void print_help_text(std::ostream & os) const
 	{
-		std::string usage_test = get_usage_text();
-		if (!usage_test.empty())
+		std::vector<const parser*> context;
+		context.push_back(this);
+		std::string usage_text = get_usage_text(context);
+		if (!usage_text.empty())
 			os << "USAGE:\n"
-			<< "  " << get_usage_text() << "\n\n";
+			<< "  " << get_usage_text(context) << "\n\n";
 
-		std::string description_test = get_description_text();
+		std::string description_test = get_description_text(context);
 		if (!description_test.empty())
-			os << get_description_text() << "\n";
+			os << get_description_text(context) << "\n";
 
 		os << "OPTIONS, ARGUMENTS:\n";
 		const std::string::size_type left_col_size = 26 - 3;
 		const std::string left_pad(left_col_size, ' ');
-		for (auto const & cols : get_help_text())
+		for (auto const & cols : get_help_text(context))
 		{
 			if (cols.option.size() > left_pad.size())
 				os << "  " << cols.option << "\n  " << left_pad << " "
@@ -1780,8 +1799,10 @@ class arg : public bound_parser<arg>
 {
 	public:
 	using bound_parser::bound_parser;
+	using bound_parser::get_usage_text;
+	using bound_parser::get_help_text;
 
-	virtual std::string get_usage_text() const override
+	virtual std::string get_usage_text(std::vector<const parser*> & context) const override
 	{
 		std::ostringstream oss;
 		if (!m_hint.empty())
@@ -1807,9 +1828,9 @@ class arg : public bound_parser<arg>
 		return oss.str();
 	}
 
-	virtual help_text get_help_text() const override
+	virtual help_text get_help_text(std::vector<const parser*> & context) const override
 	{
-		return { { get_usage_text(), m_description } };
+		return { { get_usage_text(context), m_description } };
 	}
 
 	using parser::parse;
@@ -1997,6 +2018,30 @@ inline parser_result exe_name::set(std::string const& newName)
 
 #endif
 
+#ifndef LYRA_DETAIL_SCOPED_HPP
+#define LYRA_DETAIL_SCOPED_HPP
+
+#include <functional>
+
+namespace lyra { namespace detail {
+class scoped
+{
+	public:
+	scoped(std::function<void()> entry, std::function<void()> && exit)
+		: exit_function(std::move(exit))
+	{
+		entry();
+	}
+
+	~scoped() { exit_function(); }
+
+	private:
+	std::function<void()> exit_function;
+};
+}} // namespace lyra::detail
+
+#endif
+
 #include <functional>
 #include <sstream>
 
@@ -2059,12 +2104,19 @@ class arguments : public parser
 	T & get(size_t i);
 
 
-	virtual std::string get_usage_text() const override
+	using parser::get_usage_text;
+	using parser::get_description_text;
+	using parser::get_help_text;
+
+	virtual std::string get_usage_text(std::vector<const parser*> & context) const override
 	{
+		detail::scoped set_context(
+			[&,this]() { context.push_back(this); },
+			[&]() { context.pop_back(); });
 		std::ostringstream os;
 		for (auto const & p : parsers)
 		{
-			std::string usage_text = p->get_usage_text();
+			std::string usage_text = p->get_usage_text(context);
 			if (usage_text.size() > 0)
 			{
 				if (os.tellp() != std::ostringstream::pos_type(0)) os << " ";
@@ -2079,25 +2131,31 @@ class arguments : public parser
 		return os.str();
 	}
 
-	virtual std::string get_description_text() const override
+	virtual std::string get_description_text(std::vector<const parser*> & context) const override
 	{
+		detail::scoped set_context(
+			[&,this]() { context.push_back(this); },
+			[&]() { context.pop_back(); });
 		std::ostringstream os;
 		for (auto const & p : parsers)
 		{
 			if (p->is_group()) continue;
-			auto child_description = p->get_description_text();
+			auto child_description = p->get_description_text(context);
 			if (!child_description.empty()) os << child_description << "\n";
 		}
 		return os.str();
 	}
 
-	virtual help_text get_help_text() const override
+	virtual help_text get_help_text(std::vector<const parser*> & context) const override
 	{
+		detail::scoped set_context(
+			[&,this]() { context.push_back(this); },
+			[&]() { context.pop_back(); });
 		help_text text;
 		for (auto const & p : parsers)
 		{
 			if (p->is_group()) text.push_back({ "", "" });
-			auto child_help = p->get_help_text();
+			auto child_help = p->get_help_text(context);
 			text.insert(text.end(), child_help.begin(), child_help.end());
 		}
 		return text;
@@ -2178,6 +2236,8 @@ class arguments : public parser
 					"Unrecognized token: "
 						+ result.value().remainingTokens().argument().name);
 		}
+		std::vector<const parser*> context;
+		context.push_back(this);
 		for (auto & parseInfo : parser_info)
 		{
 			auto parser_cardinality = parseInfo.parser_p->cardinality();
@@ -2188,7 +2248,7 @@ class arguments : public parser
 					&& (parseInfo.count < parser_cardinality.minimum)))
 			{
 				return parse_result::runtimeError(result.value(),
-					"Expected: " + parseInfo.parser_p->get_usage_text());
+					"Expected: " + parseInfo.parser_p->get_usage_text(context));
 			}
 		}
 		return result;
@@ -2211,6 +2271,8 @@ class arguments : public parser
 		auto result = parse_result::ok(
 			detail::parse_state(parser_result_type::no_match, tokens));
 
+		std::vector<const parser*> context;
+		context.push_back(this);
 		for (size_t i = 0; i < parsers.size() && result.value().have_tokens();
 			 ++i)
 		{
@@ -2243,7 +2305,7 @@ class arguments : public parser
 					&& (parse_info.count < parser_cardinality.minimum)))
 			{
 				return parse_result::runtimeError(result.value(),
-					"Expected: " + parse_info.parser_p->get_usage_text());
+					"Expected: " + parse_info.parser_p->get_usage_text(context));
 			}
 		}
 		return result;
@@ -2666,10 +2728,10 @@ class cli : protected arguments
 	protected:
 	mutable exe_name m_exeName;
 
-	virtual std::string get_usage_text() const override
+	virtual std::string get_usage_text(std::vector<const parser*> & context) const override
 	{
 		if (!m_exeName.name().empty())
-			return m_exeName.name() + " " + arguments::get_usage_text();
+			return m_exeName.name() + " " + arguments::get_usage_text(context);
 		else
 			return "";
 	}
@@ -2896,14 +2958,18 @@ class literal : public parser
 	}
 
 
-	virtual std::string get_usage_text() const override { return name; }
+	using parser::get_usage_text;
+	using parser::get_description_text;
+	using parser::get_help_text;
 
-	virtual std::string get_description_text() const override
+	virtual std::string get_usage_text(std::vector<const parser*> & context) const override { return name; }
+
+	virtual std::string get_description_text(std::vector<const parser*> & context) const override
 	{
 		return description;
 	}
 
-	virtual help_text get_help_text() const override
+	virtual help_text get_help_text(std::vector<const parser*> & context) const override
 	{
 		return { { name, description } };
 	}
@@ -3224,7 +3290,10 @@ class opt : public bound_parser<opt>
 	opt & operator[](std::string const & opt_name);
 
 
-	virtual std::string get_usage_text() const override
+	using bound_parser::get_usage_text;
+	using bound_parser::get_help_text;
+
+	virtual std::string get_usage_text(std::vector<const parser*> & context) const override
 	{
 		std::string result;
 		for (std::size_t o = 0; o < opt_names.size(); ++o)
@@ -3236,7 +3305,7 @@ class opt : public bound_parser<opt>
 		return result;
 	}
 
-	virtual help_text get_help_text() const override
+	virtual help_text get_help_text(std::vector<const parser*> & context) const override
 	{
 		std::ostringstream oss;
 		bool first = true;
@@ -3510,7 +3579,9 @@ class help : public opt
 
 	help & description(const std::string & text);
 
-	virtual std::string get_description_text() const override
+	using opt::get_description_text;
+
+	virtual std::string get_description_text(std::vector<const parser*> & context) const override
 	{
 		return description_text;
 	}

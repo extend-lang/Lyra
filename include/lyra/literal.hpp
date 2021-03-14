@@ -38,14 +38,18 @@ class literal : public parser
 
 	// Internal.
 
-	virtual std::string get_usage_text() const override { return name; }
+	using parser::get_usage_text;
+	using parser::get_description_text;
+	using parser::get_help_text;
 
-	virtual std::string get_description_text() const override
+	virtual std::string get_usage_text(std::vector<const parser*> & context) const override { return name; }
+
+	virtual std::string get_description_text(std::vector<const parser*> & context) const override
 	{
 		return description;
 	}
 
-	virtual help_text get_help_text() const override
+	virtual help_text get_help_text(std::vector<const parser*> & context) const override
 	{
 		return { { name, description } };
 	}

@@ -20,6 +20,7 @@
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 namespace lyra {
 
@@ -156,9 +157,25 @@ class parser
 
 	using help_text = std::vector<help_text_item>;
 
-	virtual help_text get_help_text() const { return {}; }
-	virtual std::string get_usage_text() const { return ""; }
-	virtual std::string get_description_text() const { return ""; }
+	help_text get_help_text() const
+	{
+		std::vector<const parser*> context;
+		return get_help_text(context);
+	}
+	std::string get_usage_text() const
+	{
+		std::vector<const parser*> context;
+		return get_usage_text(context);
+	}
+	std::string get_description_text() const
+	{
+		std::vector<const parser*> context;
+		return get_description_text(context);
+	}
+
+	virtual help_text get_help_text(std::vector<const parser*> & context) const { return {}; }
+	virtual std::string get_usage_text(std::vector<const parser*> & context) const { return ""; }
+	virtual std::string get_description_text(std::vector<const parser*> & context) const { return ""; }
 
 	virtual ~parser() = default;
 
@@ -191,19 +208,21 @@ class parser
 	protected:
 	void print_help_text(std::ostream & os) const
 	{
-		std::string usage_test = get_usage_text();
-		if (!usage_test.empty())
+		std::vector<const parser*> context;
+		context.push_back(this);
+		std::string usage_text = get_usage_text(context);
+		if (!usage_text.empty())
 			os << "USAGE:\n"
-			<< "  " << get_usage_text() << "\n\n";
+			<< "  " << get_usage_text(context) << "\n\n";
 
-		std::string description_test = get_description_text();
+		std::string description_test = get_description_text(context);
 		if (!description_test.empty())
-			os << get_description_text() << "\n";
+			os << get_description_text(context) << "\n";
 
 		os << "OPTIONS, ARGUMENTS:\n";
 		const std::string::size_type left_col_size = 26 - 3;
 		const std::string left_pad(left_col_size, ' ');
-		for (auto const & cols : get_help_text())
+		for (auto const & cols : get_help_text(context))
 		{
 			if (cols.option.size() > left_pad.size())
 				os << "  " << cols.option << "\n  " << left_pad << " "

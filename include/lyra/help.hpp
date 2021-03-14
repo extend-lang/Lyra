@@ -40,7 +40,9 @@ class help : public opt
 
 	help & description(const std::string & text);
 
-	virtual std::string get_description_text() const override
+	using opt::get_description_text;
+
+	virtual std::string get_description_text(std::vector<const parser*> & context) const override
 	{
 		return description_text;
 	}

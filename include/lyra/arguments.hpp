@@ -9,6 +9,7 @@
 
 #include "lyra/exe_name.hpp"
 #include "lyra/parser.hpp"
+#include "lyra/detail/scoped.hpp"
 
 #include <functional>
 #include <sstream>
@@ -83,12 +84,19 @@ class arguments : public parser
 
 	// Internal..
 
-	virtual std::string get_usage_text() const override
+	using parser::get_usage_text;
+	using parser::get_description_text;
+	using parser::get_help_text;
+
+	virtual std::string get_usage_text(std::vector<const parser*> & context) const override
 	{
+		detail::scoped set_context(
+			[&,this]() { context.push_back(this); },
+			[&]() { context.pop_back(); });
 		std::ostringstream os;
 		for (auto const & p : parsers)
 		{
-			std::string usage_text = p->get_usage_text();
+			std::string usage_text = p->get_usage_text(context);
 			if (usage_text.size() > 0)
 			{
 				if (os.tellp() != std::ostringstream::pos_type(0)) os << " ";
@@ -103,26 +111,32 @@ class arguments : public parser
 		return os.str();
 	}
 
-	virtual std::string get_description_text() const override
+	virtual std::string get_description_text(std::vector<const parser*> & context) const override
 	{
+		detail::scoped set_context(
+			[&,this]() { context.push_back(this); },
+			[&]() { context.pop_back(); });
 		std::ostringstream os;
 		for (auto const & p : parsers)
 		{
 			if (p->is_group()) continue;
-			auto child_description = p->get_description_text();
+			auto child_description = p->get_description_text(context);
 			if (!child_description.empty()) os << child_description << "\n";
 		}
 		return os.str();
 	}
 
 	// Return a container of the individual help text for the composed parsers.
-	virtual help_text get_help_text() const override
+	virtual help_text get_help_text(std::vector<const parser*> & context) const override
 	{
+		detail::scoped set_context(
+			[&,this]() { context.push_back(this); },
+			[&]() { context.pop_back(); });
 		help_text text;
 		for (auto const & p : parsers)
 		{
 			if (p->is_group()) text.push_back({ "", "" });
-			auto child_help = p->get_help_text();
+			auto child_help = p->get_help_text(context);
 			text.insert(text.end(), child_help.begin(), child_help.end());
 		}
 		return text;
@@ -212,6 +226,8 @@ class arguments : public parser
 		// bound min and max bounds against what we parsed. For the loosest
 		// required arguments we check for only the minimum. As the upper
 		// bound could be infinite.
+		std::vector<const parser*> context;
+		context.push_back(this);
 		for (auto & parseInfo : parser_info)
 		{
 			auto parser_cardinality = parseInfo.parser_p->cardinality();
@@ -222,7 +238,7 @@ class arguments : public parser
 					&& (parseInfo.count < parser_cardinality.minimum)))
 			{
 				return parse_result::runtimeError(result.value(),
-					"Expected: " + parseInfo.parser_p->get_usage_text());
+					"Expected: " + parseInfo.parser_p->get_usage_text(context));
 			}
 		}
 		return result;
@@ -247,6 +263,8 @@ class arguments : public parser
 
 		// Sequential parsing means we walk through the given parsers in order
 		// and exhaust the tokens as we go.
+		std::vector<const parser*> context;
+		context.push_back(this);
 		for (size_t i = 0; i < parsers.size() && result.value().have_tokens();
 			 ++i)
 		{
@@ -286,7 +304,7 @@ class arguments : public parser
 					&& (parse_info.count < parser_cardinality.minimum)))
 			{
 				return parse_result::runtimeError(result.value(),
-					"Expected: " + parse_info.parser_p->get_usage_text());
+					"Expected: " + parse_info.parser_p->get_usage_text(context));
 			}
 		}
 		// The return is just the last state as it contains any remaining tokens
